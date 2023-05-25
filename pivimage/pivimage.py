@@ -22,6 +22,11 @@ class PIVImage:
         self._is_a = is_first_image
         self._img = None
 
+    @property
+    def filename(self):
+        """Return filename"""
+        return self._filename
+
     def __getitem__(self, item) -> "PIVImage":
         return self.get().__getitem__(item)
 
@@ -78,7 +83,8 @@ class PIVImage:
         figure_height = figure_height
         spacing = spacing
 
-        h, w = self.get().shape
+        _shape = self.get().shape
+        h, w = _shape[0], _shape[1]
         hist_height = ax_hist_ratio * figure_height
 
         left, width = 0.1, w / w
@@ -140,18 +146,39 @@ class PIVImage:
         cv2.imwrite(filename, self[:])
 
 
+class PIVImages:
+    """Collection of PIV images"""
+
+    def __init__(self, filenames: list):
+        self.filenames = filenames
+        self._images = {}
+
+    def __getitem__(self, item):
+        """Return image array"""
+        if item not in self._images:
+            self._images[item] = PIVImage(self.filenames[item])
+        return self._images[item]
+
+
 class PIVImagePair:
     """Helper class to work with a pair of PIV images"""
 
     def __init__(self, filename_A, filename_B):
-        filename_A = Path(filename_A)
-        filename_B = Path(filename_B)
-        if not filename_B.exist():
+        if isinstance(filename_A, PIVImage):
+            filename_A = filename_A.filename
+        else:
+            filename_A = Path(filename_A)
+        if isinstance(filename_B, PIVImage):
+            filename_B = filename_B.filename
+        else:
+            filename_B = Path(filename_B)
+
+        if not filename_B.exists():
             raise FileNotFoundError(filename_A)
-        if not filename_B.exist():
+        if not filename_B.exists():
             raise FileNotFoundError(filename_B)
-        self.A = PIVImage(filename_A, is_first_image=True)
-        self.B = PIVImage(filename_B, is_first_image=False)
+        self._A = PIVImage(filename_A, is_first_image=True)
+        self._B = PIVImage(filename_B, is_first_image=False)
 
     def plot(self,
              figure_height: float = 3.,
@@ -165,7 +192,8 @@ class PIVImagePair:
         figure_height = figure_height
         spacing = spacing
 
-        h, w = self.A.get().shape
+        _shape = self.A.get().shape
+        h, w = _shape[0], _shape[1]
         hist_height = ax_hist_ratio * figure_height
 
         left, width = 0.1, w / w
@@ -212,6 +240,32 @@ class PIVImagePair:
         ax_histB.set_yticks([])
 
         return ax_imgA, ax_histA, ax_imgB, ax_histB
+
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def B(self):
+        return self._B
+
+
+class PIVImagePairs:
+    """Collection of PIV images paris"""
+
+    def __init__(self, filenames_A: list, filenames_B: list):
+        self.filenames_A = filenames_A
+        self.filenames_B = filenames_B
+        self._images_A = {}
+        self._images_B = {}
+
+    def __getitem__(self, item):
+        """Return image array"""
+        if item not in self._images_A:
+            self._images_A[item] = PIVImage(self.filenames_A[item])
+        if item not in self._images_B:
+            self._images_B[item] = PIVImage(self.filenames_B[item])
+        return PIVImagePair(self._images_A[item], self._images_B[item])
 
 
 def load_piv_image(filename: Path, is_first: bool = None):
