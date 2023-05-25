@@ -141,8 +141,15 @@ class PIVImage:
 
 
 class PIVImagePair:
+    """Helper class to work with a pair of PIV images"""
 
     def __init__(self, filename_A, filename_B):
+        filename_A = Path(filename_A)
+        filename_B = Path(filename_B)
+        if not filename_B.exist():
+            raise FileNotFoundError(filename_A)
+        if not filename_B.exist():
+            raise FileNotFoundError(filename_B)
         self.A = PIVImage(filename_A, is_first_image=True)
         self.B = PIVImage(filename_B, is_first_image=False)
 
@@ -154,6 +161,7 @@ class PIVImagePair:
              vmax: float = None,
              bins: int = 101,
              density: bool = False):
+        """Plot both images next to each other"""
         figure_height = figure_height
         spacing = spacing
 
@@ -207,6 +215,7 @@ class PIVImagePair:
 
 
 def load_piv_image(filename: Path, is_first: bool = None):
+    """Initialize a PIVImage from a filename"""
     return PIVImage(filename, is_first)
 
 
