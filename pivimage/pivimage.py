@@ -1,10 +1,13 @@
-import cv2
+import copy
 import logging
+import pathlib
+from pathlib import Path
+from typing import Union
+
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import pathlib
 from cv2 import imread as cv2_imread
-from pathlib import Path
 from pco_tools import pco_reader as pco
 
 logger = logging.getLogger(__package__)
@@ -13,7 +16,7 @@ logger = logging.getLogger(__package__)
 class PIVImage:
     """PIV image helper class"""
 
-    def __init__(self, filename: pathlib.Path,
+    def __init__(self, filename: Union[pathlib.Path, None],
                  is_first_image: bool = None):
         if filename is not None:
             self._filename = pathlib.Path(filename)
@@ -21,6 +24,17 @@ class PIVImage:
             self._filename = None
         self._is_a = is_first_image
         self._img = None
+
+    def __sub__(self, other):
+        if not isinstance(other, PIVImage):
+            raise TypeError(f'Cannot subtract {type(other)} from {type(self)}')
+        diffimg = self.get() - other.get()
+        return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
+
+    @property
+    def ndim(self):
+        """Return filename"""
+        return self.get().ndim
 
     @property
     def filename(self):
@@ -30,13 +44,26 @@ class PIVImage:
     def __getitem__(self, item) -> "PIVImage":
         return self.get().__getitem__(item)
 
+    def __array__(self):
+        """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
+        return self._img
+
     @staticmethod
     def from_array(arr) -> "PIVImage":
         pivimg = PIVImage(filename=None, is_first_image=None)
         pivimg._img = arr
         return pivimg
 
+    def grayscale(self) -> "PIVImage":
+        """make image grayscale if ndim==3"""
+        if self.ndim == 2:
+            return self
+        new_piv_image = copy.deepcopy(self)
+        new_piv_image._img = cv2.cvtColor(self.get(), cv2.COLOR_BGR2GRAY)
+        return new_piv_image
+
     def smooth(self, kernel_size) -> "PIVImage":
+        """smooth the image"""
         kernel = np.ones((kernel_size, kernel_size), np.float32) / kernel_size ** 2
         smoothed_image = cv2.filter2D(self.get(), -1, kernel)
         return PIVImage.from_array(smoothed_image)
@@ -78,8 +105,9 @@ class PIVImage:
              vmin: float = None,
              vmax: float = None,
              bins: int = 101,
-             density: bool = False):
-        """plot the image"""
+             density: bool = False,
+             ax=None):
+        """plot the image. If no `ax` is provided a histogram is automatically plotted below the image."""
         figure_height = figure_height
         spacing = spacing
 
@@ -92,6 +120,11 @@ class PIVImage:
 
         hist_ax_pos = [left, bottom, width, hist_height]
         img_ax_pos = [left, hist_height + bottom + spacing, width, height]
+
+        if ax is not None:
+            # dont plot histogram!
+            return self._plot(ax=ax, cmap='gray', vmin=vmin, vmax=vmax, hide_colorbar=True)
+
         # start with a square Figure
         fig = plt.figure(figsize=(w / h * figure_height, figure_height))
 
@@ -240,6 +273,22 @@ class PIVImagePair:
         ax_histB.set_yticks([])
 
         return ax_imgA, ax_histA, ax_imgB, ax_histB
+
+    def plot_overlay(self, channel_A=0, channel_B=2, **kwargs):
+        """plot both images in different channels. A is plotted in red, B in blue"""
+        if channel_A not in [0, 1, 2]:
+            raise ValueError('channel_A must be 0, 1 or 2')
+        if channel_B not in [0, 1, 2]:
+            raise ValueError('channel_B must be 0, 1 or 2')
+        if channel_A == channel_B:
+            raise ValueError('channel_A and channel_B must be different')
+        ax = kwargs.pop('ax', plt.gca())
+        arrA = self.A.get()
+        arrRGB = np.zeros((*arrA.shape, 3))
+        arrRGB[:, :, channel_A] = arrA
+        arrRGB[:, :, channel_B] = self.B.get()
+        ax.imshow(arrRGB)
+        return ax
 
     @property
     def A(self):
