@@ -33,8 +33,13 @@ class PIVImage:
 
     @property
     def ndim(self):
-        """Return filename"""
+        """Return ndim of array"""
         return self.get().ndim
+
+    @property
+    def shape(self):
+        """Return shape of array"""
+        return self.get().shape
 
     @property
     def filename(self):
@@ -194,24 +199,43 @@ class PIVImages:
 
 
 class PIVImagePair:
-    """Helper class to work with a pair of PIV images"""
+    """Helper class to work with a pair of PIV images
 
-    def __init__(self, filename_A, filename_B):
+    If a PIV recording is only stored in one file, than pass None for filename_B.
+    """
+
+    def __init__(self,
+                 filename_A: Union[str, pathlib.Path, PIVImage,],
+                 filename_B: Union[str, pathlib.Path, PIVImage, None]):
+        if filename_A is None:
+            raise ValueError('filename_A cannot be None!')
+
         if isinstance(filename_A, PIVImage):
             filename_A = filename_A.filename
         else:
             filename_A = Path(filename_A)
-        if isinstance(filename_B, PIVImage):
-            filename_B = filename_B.filename
-        else:
-            filename_B = Path(filename_B)
 
-        if not filename_B.exists():
-            raise FileNotFoundError(filename_A)
-        if not filename_B.exists():
-            raise FileNotFoundError(filename_B)
-        self._A = PIVImage(filename_A, is_first_image=True)
-        self._B = PIVImage(filename_B, is_first_image=False)
+        if filename_B is None:
+            # both images are assumed to be stored in the first image:
+            self._A = PIVImage(filename_A, is_first_image=True)
+            self._B = PIVImage(filename_A, is_first_image=True)
+
+            ny, nx = self._A.shape
+
+            self._A._img = self._A[:ny // 2, :]
+            self._B._img = self._B[ny // 2:, :]
+        else:
+            if isinstance(filename_B, PIVImage):
+                filename_B = filename_B.filename
+            else:
+                filename_B = Path(filename_B)
+
+            if not filename_B.exists():
+                raise FileNotFoundError(filename_A)
+            if not filename_B.exists():
+                raise FileNotFoundError(filename_B)
+            self._A = PIVImage(filename_A, is_first_image=True)
+            self._B = PIVImage(filename_B, is_first_image=False)
 
     def plot(self,
              figure_height: float = 3.,
