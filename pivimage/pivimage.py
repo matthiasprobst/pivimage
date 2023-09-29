@@ -2,7 +2,7 @@ import copy
 import logging
 import pathlib
 from pathlib import Path
-from typing import Union
+from typing import Union, List
 
 import cv2
 import matplotlib.pyplot as plt
@@ -17,18 +17,22 @@ class PIVImage:
     """PIV image helper class"""
 
     def __init__(self, filename: Union[pathlib.Path, None],
-                 is_first_image: bool = None):
+                 is_first_image: bool = None,
+                 pco: bool = False):
         if filename is not None:
             self._filename = pathlib.Path(filename)
         else:
             self._filename = None
+        self.pco = pco
         self._is_a = is_first_image
         self._img = None
 
     def __sub__(self, other):
+        """Subtract two PIV images. If the result is negative, set it to zero."""
         if not isinstance(other, PIVImage):
             raise TypeError(f'Cannot subtract {type(other)} from {type(self)}')
         diffimg = self.get() - other.get()
+        diffimg[diffimg< 0] = 0
         return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
 
     @property
@@ -79,7 +83,15 @@ class PIVImage:
 
     def get(self):
         if self._img is None:
-            return loadimg(self._filename)
+            img = loadimg(self._filename)
+            if not pco:
+                self._img = img
+            else:
+                ny, nx = img.shape
+                if self._is_a:
+                    self._img = img[:ny // 2, :]
+                else:
+                    self._img = img[ny // 2:, :]
         return self._img
 
     def normalize(self) -> "PIVImage":
@@ -187,7 +199,7 @@ class PIVImage:
 class PIVImages:
     """Collection of PIV images"""
 
-    def __init__(self, filenames: list):
+    def __init__(self, filenames: List):
         self.filenames = filenames
         self._images = {}
 
@@ -217,13 +229,8 @@ class PIVImagePair:
 
         if filename_B is None:
             # both images are assumed to be stored in the first image:
-            self._A = PIVImage(filename_A, is_first_image=True)
-            self._B = PIVImage(filename_A, is_first_image=True)
-
-            ny, nx = self._A.shape
-
-            self._A._img = self._A[:ny // 2, :]
-            self._B._img = self._B[ny // 2:, :]
+            self._A = PIVImage(filename_A, is_first_image=True, pco=True)
+            self._B = PIVImage(filename_A, is_first_image=False, pco=True)
         else:
             if isinstance(filename_B, PIVImage):
                 filename_B = filename_B.filename
@@ -313,6 +320,25 @@ class PIVImagePair:
         arrRGB[:, :, channel_B] = self.B.get()
         ax.imshow(arrRGB)
         return ax
+
+    def subtract_background(self, background_filename: Union[Union[str, pathlib.Path],
+                                                             List[Union[str, pathlib.Path]]]) -> "PIVImagePair":
+        """subtract the background from both images. A new PIVImagePair is returned"""
+        if not isinstance(background_filename, (tuple, list)):
+            background_filename = [background_filename, ]
+        if len(background_filename) == 0:
+            raise ValueError('No background file provided!')
+        elif len(background_filename) > 2:
+            raise ValueError('Too many background files provided!')
+        bga = loadimg(background_filename[0])
+        if len(background_filename) == 2:
+            bgb = loadimg(background_filename[1])
+        else:
+            bgb = bga
+        _piv_img_pari = copy.deepcopy(self)
+        _piv_img_pari._A._img = _piv_img_pari._A._img - bga
+        _piv_img_pari._B._img = _piv_img_pari._B._img - bgb
+        return _piv_img_pari
 
     @property
     def A(self):
