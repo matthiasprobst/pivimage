@@ -5,7 +5,9 @@ on:
     branches:
       - main
       - dev
-
+orbs:
+  codecov: codecov/codecov@3.2.2
+  
 jobs:
   test:
     runs-on: ${{ matrix.os }}
