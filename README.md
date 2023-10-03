@@ -1,7 +1,7 @@
 # Pivimage
 
 ![Tests](https://github.com/matthiasprobst/pivimage/actions/workflows/tests.yml/badge.svg)
-![DOCS](https://codecov.io/gh/matthiasprobst/pivimage/branch/dev/graph/badge.svg)
+[![codecov](https://codecov.io/github/matthiasprobst/pivimage/graph/badge.svg?token=7H1BZ7NM1T)](https://codecov.io/github/matthiasprobst/pivimage)
 
 **Note, that the project is still under development!**
 
