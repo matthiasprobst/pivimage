@@ -1,5 +1,8 @@
 # Pivimage
 
+![Tests](https://github.com/matthiasprobst/pivimage/actions/workflows/tests.yml/badge.svg)
+![DOCS](https://codecov.io/gh/matthiasprobst/pivimage/branch/dev/graph/badge.svg)
+
 **Note, that the project is still under development!**
 
 `PIVimage` is a small library assisting with reading PIV images. It provides specific utilities to handle PIV images and
