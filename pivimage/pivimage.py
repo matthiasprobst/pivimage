@@ -8,7 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from cv2 import imread as cv2_imread
-from pco_tools import pco_reader as pco
+from pco_tools import pco_reader
 
 logger = logging.getLogger(__package__)
 
@@ -25,15 +25,28 @@ class PIVImage:
             self._filename = None
         self.pco = pco
         self._is_a = is_first_image
+        if self._is_a is None and pco:
+            raise ValueError('If pco is set, ou must specify whether this is the first or second image via '
+                             'parameter "is_first_image".')
         self._img = None
 
     def __sub__(self, other):
         """Subtract two PIV images. If the result is negative, set it to zero."""
-        if not isinstance(other, PIVImage):
+        if not isinstance(other, (PIVImage, np.ndarray)):
             raise TypeError(f'Cannot subtract {type(other)} from {type(self)}')
-        diffimg = self.get() - other.get()
-        diffimg[diffimg< 0] = 0
+        if isinstance(other, PIVImage):
+            diffimg = self.get() - other.get()
+        else:
+            diffimg = self.get() - other
+        diffimg[diffimg < 0] = 0
         return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
+
+    def __getitem__(self, item) -> "PIVImage":
+        return self.get().__getitem__(item)
+
+    def __array__(self):
+        """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
+        return self._img
 
     @property
     def ndim(self):
@@ -50,24 +63,32 @@ class PIVImage:
         """Return filename"""
         return self._filename
 
-    def __getitem__(self, item) -> "PIVImage":
-        return self.get().__getitem__(item)
-
-    def __array__(self):
-        """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
-        return self._img
-
     @staticmethod
-    def from_array(arr) -> "PIVImage":
-        pivimg = PIVImage(filename=None, is_first_image=None)
-        pivimg._img = arr
+    def from_array(arr, is_first_image: bool = None, pco: bool = False) -> "PIVImage":
+        """Init the class from a numpy array."""
+        pivimg = PIVImage(filename=None, is_first_image=is_first_image, pco=pco)
+        ny, nx = arr.shape[0], arr.shape[1]
+        if pco and is_first_image:
+            pivimg._img = arr[:ny // 2, ...]
+        elif pco and not is_first_image:
+            pivimg._img = arr[ny // 2:, ...]
+        else:
+            pivimg._img = arr
         return pivimg
+
+    def max(self):
+        """Return maximum value of image"""
+        return self.get().max()
+
+    def min(self):
+        """Return minimum value of image"""
+        return self.get().min()
 
     def grayscale(self) -> "PIVImage":
         """make image grayscale if ndim==3"""
         if self.ndim == 2:
-            return self
-        new_piv_image = copy.deepcopy(self)
+            return copy.deepcopy(self)
+        new_piv_image = PIVImage.from_array(self._img.copy(), is_first_image=self._is_a, pco=self.pco)
         new_piv_image._img = cv2.cvtColor(self.get(), cv2.COLOR_BGR2GRAY)
         return new_piv_image
 
@@ -81,17 +102,22 @@ class PIVImage:
         """free the (RAM), aka unset _img"""
         self._img = None
 
-    def get(self):
+    def get(self) -> np.ndarray:
+        """Return the image. If not yet loaded (self._img is None), load it."""
         if self._img is None:
+            if self._filename is None:
+                raise ValueError('No filename set!')
             img = loadimg(self._filename)
-            if not pco:
+            if not self.pco:
                 self._img = img
             else:
                 ny, nx = img.shape
                 if self._is_a:
-                    self._img = img[:ny // 2, :]
+                    print('return second part of image')
+                    self._img = img[:ny // 2, ...]
                 else:
-                    self._img = img[ny // 2:, :]
+                    print('return first part of image')
+                    self._img = img[ny // 2:, ...]
         return self._img
 
     def normalize(self) -> "PIVImage":
@@ -113,6 +139,14 @@ class PIVImage:
         _img = self.get()
         pivimg = PIVImage(self._filename, self._is_a)
         pivimg._img = np.rot90(_img, k=2)
+        return pivimg
+
+    def apply_mask(self, mask_array: np.ndarray, fill_value: int) -> "PIVImage":
+        """Apply a mask to the image. Will set the masked values to `fill_value`."""
+        _img = self.get().copy()
+        _img[mask_array] = fill_value
+        pivimg = PIVImage(self._filename, self._is_a)
+        pivimg._img = _img
         return pivimg
 
     def plot(self,
@@ -202,6 +236,9 @@ class PIVImages:
     def __init__(self, filenames: List):
         self.filenames = filenames
         self._images = {}
+
+    def __len__(self):
+        return len(self.filenames)
 
     def __getitem__(self, item):
         """Return image array"""
@@ -378,7 +415,7 @@ def loadimg(img_filepath: Path):
     """
     img_filepath = Path(img_filepath)
     if img_filepath.suffix in ('b16', '.b16'):
-        im_ = pco.load(str(img_filepath))
+        im_ = pco_reader.load(str(img_filepath))
     else:
         im_ = cv2_imread(str(img_filepath), -1)
     return im_

@@ -1,0 +1,6 @@
+appdirs>=1.4.4
+numpy
+pco_tools>=1.0.0
+opencv-python>=4.5.3.56
+importlib-metadata>=5.0.0
+matplotlib
