@@ -1,4 +1,5 @@
 from ._version import __version__
-from .pivimage import PIVImage, PIVImages, PIVImagePair, PIVImagePairs, loadimg
+from .pivimage import PIVImage, PIVImages, PIVImagePair, PIVImagePairs, loadimg, save_image
 
-__all__ = ["PIVImage", "PIVImages", "PIVImagePair", "PIVImagePairs", "loadimg", "__version__"]
+__all__ = ["PIVImage", "PIVImages", "PIVImagePair", "PIVImagePairs", "loadimg",
+           "save_image", "__version__"]

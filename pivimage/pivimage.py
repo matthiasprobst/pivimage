@@ -1,14 +1,13 @@
 import copy
-import logging
-import pathlib
-from pathlib import Path
-from typing import Union, List
-
 import cv2
+import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pathlib
 from cv2 import imread as cv2_imread
+from pathlib import Path
 from pco_tools import pco_reader
+from typing import Union, List
 
 logger = logging.getLogger(__package__)
 
@@ -227,7 +226,7 @@ class PIVImage:
         return ax
 
     def to_tiff(self, filename):
-        cv2.imwrite(filename, self[:])
+        return save_image(filename, self[:])
 
 
 class PIVImages:
@@ -419,3 +418,11 @@ def loadimg(img_filepath: Path):
     else:
         im_ = cv2_imread(str(img_filepath), -1)
     return im_
+
+
+def save_image(filename, arr, img_type='tiff'):
+    """write data to a tiff file"""
+    if img_type in ('tiff', '.tiff'):
+        cv2.imwrite(str(filename), arr)
+        return pathlib.Path(filename).absolute()
+    raise NotImplementedError('Image types other than tiff are not implemented yet.')
