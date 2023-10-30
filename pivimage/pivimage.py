@@ -1,51 +1,48 @@
+import abc
 import copy
-import cv2
 import logging
+import pathlib
+from pathlib import Path
+from typing import Union, List, Tuple, Dict
+
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import pathlib
 from cv2 import imread as cv2_imread
-from pathlib import Path
 from pco_tools import pco_reader
-from typing import Union, List
 
+keep_attrs = False
 logger = logging.getLogger(__package__)
 
 
-class PIVImage:
-    """PIV image helper class"""
+class _PIVImage(abc.ABC):
 
-    def __init__(self, filename: Union[pathlib.Path, None],
-                 is_first_image: bool = None,
-                 pco: bool = False):
-        if filename is not None:
-            self._filename = pathlib.Path(filename)
-        else:
-            self._filename = None
-        self.pco = pco
-        self._is_a = is_first_image
-        if self._is_a is None and pco:
-            raise ValueError('If pco is set, ou must specify whether this is the first or second image via '
-                             'parameter "is_first_image".')
+    def __init__(self, filename, attrs: Union[Dict, None] = None):
+        self._filename = filename
         self._img = None
+        if attrs is None:
+            attrs = {}
+        self.attrs = attrs
 
-    def __sub__(self, other):
-        """Subtract two PIV images. If the result is negative, set it to zero."""
-        if not isinstance(other, (PIVImage, np.ndarray)):
-            raise TypeError(f'Cannot subtract {type(other)} from {type(self)}')
-        if isinstance(other, PIVImage):
-            diffimg = self.get() - other.get()
-        else:
-            diffimg = self.get() - other
-        diffimg[diffimg < 0] = 0
-        return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
-
-    def __getitem__(self, item) -> "PIVImage":
+    def __getitem__(self, item):
         return self.get().__getitem__(item)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(fname={self._filename}, attrs={self.attrs})'
+
+    @property
+    def filename(self):
+        """Return filename"""
+        return self._filename
 
     def __array__(self):
         """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
         return self._img
+
+    @classmethod
+    @abc.abstractmethod
+    def from_array(cls, img: np.ndarray, attrs: Union[Dict, None] = None):
+        """Initialize from array"""
 
     @property
     def ndim(self):
@@ -57,23 +54,17 @@ class PIVImage:
         """Return shape of array"""
         return self.get().shape
 
-    @property
-    def filename(self):
-        """Return filename"""
-        return self._filename
+    def clear(self):
+        """free the (RAM), aka unset _img"""
+        self._img = None
 
-    @staticmethod
-    def from_array(arr, is_first_image: bool = None, pco: bool = False) -> "PIVImage":
-        """Init the class from a numpy array."""
-        pivimg = PIVImage(filename=None, is_first_image=is_first_image, pco=pco)
-        ny, nx = arr.shape[0], arr.shape[1]
-        if pco and is_first_image:
-            pivimg._img = arr[:ny // 2, ...]
-        elif pco and not is_first_image:
-            pivimg._img = arr[ny // 2:, ...]
-        else:
-            pivimg._img = arr
-        return pivimg
+    def get(self) -> np.ndarray:
+        """Return the image. If not yet loaded (self._img is None), load it."""
+        if self._img is None:
+            if self._filename is None:
+                raise ValueError('No filename set!')
+            self._img = loadimg(self._filename)
+        return self._img
 
     def max(self):
         """Return maximum value of image"""
@@ -95,58 +86,41 @@ class PIVImage:
         """smooth the image"""
         kernel = np.ones((kernel_size, kernel_size), np.float32) / kernel_size ** 2
         smoothed_image = cv2.filter2D(self.get(), -1, kernel)
-        return PIVImage.from_array(smoothed_image)
+        return PIVImage.from_array(smoothed_image, attrs=self.attrs.copy() if keep_attrs else {})
 
-    def clear(self):
-        """free the (RAM), aka unset _img"""
-        self._img = None
-
-    def get(self) -> np.ndarray:
-        """Return the image. If not yet loaded (self._img is None), load it."""
-        if self._img is None:
-            if self._filename is None:
-                raise ValueError('No filename set!')
-            img = loadimg(self._filename)
-            if not self.pco:
-                self._img = img
-            else:
-                ny, nx = img.shape
-                if self._is_a:
-                    print('return second part of image')
-                    self._img = img[:ny // 2, ...]
-                else:
-                    print('return first part of image')
-                    self._img = img[ny // 2:, ...]
-        return self._img
-
-    def normalize(self) -> "PIVImage":
+    def normalize(self, inplace: bool = False) -> "PIVImage":
+        """normalize the image"""
         _img = self.get()
         _min = np.nanmin(_img)
         _max = np.nanmax(_img)
-        _img = (_img - _min) / (_max - _min)
-        pivimg = PIVImage(self._filename, self._is_a)
-        pivimg._img = _img
-        return pivimg
+        norm_img = (_img - _min) / (_max - _min)
+        if inplace:
+            self._img = norm_img
+            return self
+        return self.from_array(norm_img, attrs=self.attrs.copy() if keep_attrs else {})
 
-    def rot90(self) -> "PIVImage":
+    def rot90(self, inplace: bool = False) -> "PIVImage":
         _img = self.get()
-        pivimg = PIVImage(self._filename, self._is_a)
-        pivimg._img = np.rot90(_img, k=1)
-        return pivimg
+        if inplace:
+            _img = np.rot90(_img)
+            return self
+        return self.from_array(np.rot90(_img), attrs=self.attrs.copy() if keep_attrs else {})
 
-    def rot180(self) -> "PIVImage":
+    def rot180(self, inplace: bool = False) -> "PIVImage":
         _img = self.get()
-        pivimg = PIVImage(self._filename, self._is_a)
-        pivimg._img = np.rot90(_img, k=2)
-        return pivimg
+        if inplace:
+            _img = np.rot90(_img, k=2)
+            return self
+        return self.from_array(np.rot90(_img, k=2), attrs=self.attrs.copy() if keep_attrs else {})
 
-    def apply_mask(self, mask_array: np.ndarray, fill_value: int) -> "PIVImage":
+    def apply_mask(self, mask_array: np.ndarray, fill_value: int, inplace: bool = False) -> "PIVImage":
         """Apply a mask to the image. Will set the masked values to `fill_value`."""
-        _img = self.get().copy()
-        _img[mask_array] = fill_value
-        pivimg = PIVImage(self._filename, self._is_a)
-        pivimg._img = _img
-        return pivimg
+        masked_img = self.get().copy()
+        masked_img[mask_array] = fill_value
+        if inplace:
+            self._img = masked_img
+            return self
+        return self.from_array(masked_img, attrs=self.attrs.copy() if keep_attrs else {})
 
     def plot(self,
              figure_height: float = 3.,
@@ -156,7 +130,7 @@ class PIVImage:
              vmax: float = None,
              bins: int = 101,
              density: bool = False,
-             ax=None):
+             axs: Tuple[plt.Axes, None] = None):
         """plot the image. If no `ax` is provided a histogram is automatically plotted below the image."""
         figure_height = figure_height
         spacing = spacing
@@ -171,22 +145,25 @@ class PIVImage:
         hist_ax_pos = [left, bottom, width, hist_height]
         img_ax_pos = [left, hist_height + bottom + spacing, width, height]
 
-        if ax is not None:
-            # dont plot histogram!
-            return self._plot(ax=ax, cmap='gray', vmin=vmin, vmax=vmax, hide_colorbar=True)
+        if axs is not None:
+            if len(axs) == 1:
+                return self._plot(ax=axs[0], cmap='gray', vmin=vmin, vmax=vmax, hide_colorbar=True)
+            ax_img = axs[0]
+            ax_hist = axs[1]
+        else:
+            # start with a square Figure
+            fig = plt.figure(figsize=(w / h * figure_height, figure_height))
 
-        # start with a square Figure
-        fig = plt.figure(figsize=(w / h * figure_height, figure_height))
+            ax_img = fig.add_axes(img_ax_pos)
+            ax_img.axis('off')
 
-        ax_img = fig.add_axes(img_ax_pos)
-        ax_img.axis('off')
-        if self._is_a is not None:
-            if self._is_a:
-                ax_img.set_title('A', size=12)
-            else:
-                ax_img.set_title('B', size=12)
+            # if self._is_a is not None:
+            #     if self._is_a:
+            #         ax_img.set_title('A', size=12)
+            #     else:
+            #         ax_img.set_title('B', size=12)
 
-        ax_hist = fig.add_axes(hist_ax_pos)
+            ax_hist = fig.add_axes(hist_ax_pos)
 
         self._plot(ax=ax_img, cmap='gray', vmin=vmin, vmax=vmax, hide_colorbar=True)
         self.hist(ax=ax_hist, bins=bins, color='k', density=density)
@@ -225,25 +202,137 @@ class PIVImage:
         ax.hist(self.get().ravel(), color=color, **kwargs)
         return ax
 
-    def to_tiff(self, filename):
-        return save_image(filename, self[:])
+    def to_tiff(self, filename, write_attrs: bool = False):
+        filename = save_image(filename, self[:])
+        if write_attrs:
+            yam_filename = filename.parent / f'{filename.stem}_attrs.yaml'
+            try:
+                import yaml
+            except ImportError:
+                raise ImportError('Please install pyyaml to write the attrs to a yaml file.')
+            with open(yam_filename, 'w') as f:
+                yaml.safe_dump(self.attrs, f)
+        return filename
+
+
+class PIVBackgroundImage(_PIVImage):
+    """PIV background image helper class"""
+
+    @classmethod
+    def from_array(cls, img: np.ndarray, attrs: Union[Dict, None] = None):
+        """Create a PIVImage object from a numpy array"""
+        obj = cls(filename=None, attrs=attrs)
+        obj._img = img
+        return obj
+
+
+class PIVImage(_PIVImage):
+    """PIV image helper class"""
+
+    def __init__(self,
+                 filename: Union[pathlib.Path, None],
+                 is_first_image: bool = None,
+                 pco: bool = False,
+                 attrs: Dict = None):
+        super().__init__(filename=filename, attrs=attrs)
+
+        self.pco = pco
+        self._is_a = is_first_image
+        if self._is_a is None and pco:
+            raise ValueError('If pco is set, ou must specify whether this is the first or second image via '
+                             'parameter "is_first_image".')
+        self._img = None
+
+    def __sub__(self, other):
+        """Subtract two PIV images. If the result is negative, set it to zero."""
+        if not isinstance(other, (PIVImage, np.ndarray)):
+            raise TypeError(f'Cannot subtract {type(other)} from {type(self)}')
+        if isinstance(other, PIVImage):
+            diffimg = self.get() - other.get()
+        else:
+            diffimg = self.get() - other
+        diffimg[diffimg < 0] = 0
+        return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
+
+    def get(self) -> np.ndarray:
+        """Return the image. If not yet loaded (self._img is None), load it."""
+        if self._img is None:
+            if self._filename is None:
+                raise ValueError('No filename set!')
+            img = loadimg(self._filename)
+            if not self.pco:
+                self._img = img
+            else:
+                ny, nx = img.shape
+                if self._is_a:
+                    print('return second part of image')
+                    self._img = img[:ny // 2, ...]
+                else:
+                    print('return first part of image')
+                    self._img = img[ny // 2:, ...]
+        return self._img
+
+    @classmethod
+    def from_array(cls, arr, is_first_image: bool = None, pco: bool = False,
+                   attrs: Union[Dict, None] = None) -> "PIVImage":
+        """Init the class from a numpy array."""
+        pivimg = cls(filename=None, is_first_image=is_first_image, pco=pco, attrs=attrs)
+        ny, nx = arr.shape[0], arr.shape[1]
+        if pco and is_first_image:
+            pivimg._img = arr[:ny // 2, ...]
+        elif pco and not is_first_image:
+            pivimg._img = arr[ny // 2:, ...]
+        else:
+            pivimg._img = arr
+        return pivimg
 
 
 class PIVImages:
-    """Collection of PIV images"""
+    """Collection of PIV images. The images are loaded on demand. The images have no
+    relation to each other. They are just a collection of images. If you intend to work
+    with image pairs, use the PIVImagePair class instead."""
 
     def __init__(self, filenames: List):
-        self.filenames = filenames
+        self.filenames = list(filenames)
         self._images = {}
 
     def __len__(self):
         return len(self.filenames)
 
-    def __getitem__(self, item):
-        """Return image array"""
+    def __getitem__(self, item) -> PIVImage:
+        """Return image array. Loaded on demand, which means, that if the image was
+        loaded before, it will be returned from memory, otherwise it will be loaded from
+        disk."""
+        if isinstance(item, slice):
+            return PIVImages.from_array_list([self[i] for i in range(*item.indices(len(self)))])
         if item not in self._images:
             self._images[item] = PIVImage(self.filenames[item])
         return self._images[item]
+
+    def compute_background(self, func) -> PIVImage:
+        """Compute the background image using the given function. The function must
+        accept a numpy array and axis=0 as input and return a numpy array as output.
+        E.g.: np.min, np.mean, np.median, etc.
+
+        Parameters
+        ----------
+        func : Callable
+            Function to compute the background image. Must accept a numpy array and
+            axis=0 as input and return a numpy array as output.
+
+        Returns
+        -------
+        PIVImage
+            Background image.
+        """
+        return PIVBackgroundImage.from_array(func(np.stack([self[i][:] for i in range(len(self))]), axis=0))
+
+    @classmethod
+    def from_array_list(cls, list_of_arrays: List[np.ndarray]):
+        """Create a PIVImages object from a list of numpy arrays."""
+        obj = cls([None for _ in range(len(list_of_arrays))])
+        obj._images = {i: PIVImage(list_of_arrays[i]) for i in range(len(list_of_arrays))}
+        return obj
 
 
 class PIVImagePair:

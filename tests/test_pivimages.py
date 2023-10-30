@@ -1,6 +1,7 @@
 import pathlib
 import unittest
 
+import numpy as np
 import pivtestdata as ptd
 
 import pivimage
@@ -19,3 +20,8 @@ class TestPivImages(unittest.TestCase):
         pivimgs = pivimage.PIVImages(self.filenames)
         self.assertEqual(len(pivimgs), len(self.filenames))
         self.assertEqual(pivimgs[0].filename, self.filenames[0])
+
+    def test_background(self):
+        pivimgs = pivimage.PIVImages(self.filenames)
+        bg = pivimgs.compute_background(np.min)
+        bg.rot180()
