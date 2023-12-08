@@ -100,16 +100,18 @@ class _PIVImage(abc.ABC):
         return self.from_array(norm_img, attrs=self.attrs.copy() if keep_attrs else {})
 
     def rot90(self, inplace: bool = False) -> "PIVImage":
+        """rotate image by 90 degrees"""
         _img = self.get()
         if inplace:
-            _img = np.rot90(_img)
+            self._img = np.rot90(_img)
             return self
         return self.from_array(np.rot90(_img), attrs=self.attrs.copy() if keep_attrs else {})
 
     def rot180(self, inplace: bool = False) -> "PIVImage":
+        """rotate image by 180 degrees"""
         _img = self.get()
         if inplace:
-            _img = np.rot90(_img, k=2)
+            self._img = np.rot90(_img, k=2)
             return self
         return self.from_array(np.rot90(_img, k=2), attrs=self.attrs.copy() if keep_attrs else {})
 
