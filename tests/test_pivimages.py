@@ -1,8 +1,7 @@
-import pathlib
-import unittest
-
 import numpy as np
+import pathlib
 import pivtestdata as ptd
+import unittest
 
 import pivimage
 

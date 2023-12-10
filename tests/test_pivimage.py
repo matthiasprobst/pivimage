@@ -1,9 +1,8 @@
-import pathlib
-import unittest
-
 import cv2
 import numpy as np
+import pathlib
 import pivtestdata as ptd
+import unittest
 
 import pivimage
 
@@ -16,6 +15,14 @@ class TestPivImage(unittest.TestCase):
         pc_1B = ptd.piv_challenge.pc_1B
         sample_folder_pc_1B = pc_1B.download()
         self.filenames = sorted(sample_folder_pc_1B.glob('*.tif*'))
+
+    def test_array(self):
+        pivimg = pivimage.PIVImage(self.filenames[0])
+        self.assertEqual(pivimg._img, None)
+        self.assertIsInstance(pivimg.__array__(), np.ndarray)
+
+        pivimg = pivimage.PIVImage(self.filenames[0])
+        self.assertIsInstance(np.asarray(pivimg), np.ndarray)
 
     def test_PIVImage(self):
         pivimg_none = pivimage.PIVImage(None)
@@ -164,6 +171,23 @@ class TestPivImage(unittest.TestCase):
         np.testing.assert_array_equal(pivimg_rot[:], np.rot90(ref_img, 2))
         pivimg_rot2 = pivimg_rot.rot180()
         np.testing.assert_array_equal(pivimg_rot2[:], pivimg[:])
+
+    def test_flip(self):
+        ref_img = pivimage.loadimg(self.filenames[0])
+        pivimg = pivimage.PIVImage.from_array(ref_img)
+        pivimg_fliplr = pivimg.fliplr()
+        self.assertFalse(pivimg is pivimg_fliplr)
+        self.assertEqual(pivimg.shape, pivimg_fliplr.shape)
+        with self.assertRaises(AssertionError):
+            np.testing.assert_array_equal(pivimg_fliplr[:], pivimg[:])
+        np.testing.assert_array_equal(pivimg_fliplr[:], np.fliplr(ref_img))
+
+        pivimg_flipud = pivimg.flipud()
+        self.assertFalse(pivimg is pivimg_flipud)
+        self.assertEqual(pivimg.shape, pivimg_flipud.shape)
+        with self.assertRaises(AssertionError):
+            np.testing.assert_array_equal(pivimg_flipud[:], pivimg[:])
+        np.testing.assert_array_equal(pivimg_flipud[:], np.flipud(ref_img))
 
     def test_to_tiff(self):
         ref_img = pivimage.loadimg(self.filenames[0])

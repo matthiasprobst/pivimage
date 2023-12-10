@@ -1,15 +1,14 @@
 import abc
 import copy
-import logging
-import pathlib
-from pathlib import Path
-from typing import Union, List, Tuple, Dict
-
 import cv2
+import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pathlib
 from cv2 import imread as cv2_imread
+from pathlib import Path
 from pco_tools import pco_reader
+from typing import Union, List, Tuple, Dict
 
 keep_attrs = False
 logger = logging.getLogger(__package__)
@@ -37,7 +36,7 @@ class _PIVImage(abc.ABC):
 
     def __array__(self):
         """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
-        return self._img
+        return self.get()
 
     @classmethod
     @abc.abstractmethod
@@ -106,6 +105,22 @@ class _PIVImage(abc.ABC):
             self._img = np.rot90(_img)
             return self
         return self.from_array(np.rot90(_img), attrs=self.attrs.copy() if keep_attrs else {})
+
+    def fliplr(self, inplace: bool = False) -> "PIVImage":
+        """flip image left-right"""
+        _img = self.get()
+        if inplace:
+            self._img = np.fliplr(_img)
+            return self
+        return self.from_array(np.fliplr(_img), attrs=self.attrs.copy() if keep_attrs else {})
+
+    def flipud(self, inplace: bool = False) -> "PIVImage":
+        """flip image up-down"""
+        _img = self.get()
+        if inplace:
+            self._img = np.flipud(_img)
+            return self
+        return self.from_array(np.flipud(_img), attrs=self.attrs.copy() if keep_attrs else {})
 
     def rot180(self, inplace: bool = False) -> "PIVImage":
         """rotate image by 180 degrees"""
