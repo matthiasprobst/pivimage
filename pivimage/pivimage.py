@@ -5,48 +5,102 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import pathlib
+import warnings
 from cv2 import imread as cv2_imread
 from pathlib import Path
 from pco_tools import pco_reader
 from typing import Union, List, Tuple, Dict
 
-keep_attrs = False
+from .file_wrapper import FileWrapper
+from .meta import Metadata
+
+keep_meta = False
 logger = logging.getLogger(__package__)
 
 
-class _PIVImage(abc.ABC):
+class _PIVImage(abc.ABC, FileWrapper):
 
-    def __init__(self, filename, attrs: Union[Dict, None] = None):
-        self._filename = filename
+    def __init__(self,
+                 filename,
+                 meta: Union[Dict, Metadata] = None,
+                 **kwargs):
+        super().__init__(filename, **kwargs)
         self._img = None
-        if attrs is None:
-            attrs = {}
-        self.attrs = attrs
+
+        attrs = kwargs.get('attrs', None)
+        if attrs is not None:
+            warnings.warn(f'Parameter "attrs" is deprecated. Please use "meta" instead.')
+            if meta is not None:
+                raise ValueError(f'Both "meta" and "attrs" are given. In future only "meta" will be available. '
+                                 f'Make sure to only pass one of it at this stage, preferably "meta".')
+
+        if isinstance(meta, dict):
+            self._meta = Metadata(self)
+        else:
+            self._meta = Metadata(self)
+
+    @property
+    def meta(self):
+        """Return metadata object"""
+        return self._meta
+
+    @meta.setter
+    def meta(self, data: Dict):
+        if not isinstance(data, dict):
+            raise TypeError('Only allow a dictionary')
+        self._meta._data = data
 
     def __getitem__(self, item):
         return self.get().__getitem__(item)
 
-    def __repr__(self):
-        return f'{self.__class__.__name__}(fname={self._filename}, attrs={self.attrs})'
+    def asxarray(self):
+        """Use xarray instead of numpy array. Requires xarray to be installed.
+        A new object with xarray.DataArray for the iamge array is returned.
+        """
+        try:
+            import xarray as xr
+        except ImportError:
+            raise ImportError('xarray is not installed. Please install it first.')
+        ny, nx = self.shape
+        new_obj = copy.deepcopy(self)
+        try:
+            attrs = self.meta.data
+        except NotImplementedError as e:
+            attrs = {}
+        new_obj._img = xr.DataArray(new_obj.get(),
+                                    dims=('iy', 'ix'),
+                                    coords={'iy': np.arange(ny),
+                                            'ix': np.arange(nx)},
+                                    attrs=attrs)
+        return new_obj
+
+    def unlink(self, missing_ok: bool = True):
+        """Deletes the image file and the meta file (if exists/associated)"""
+        self.filename.unlink(missing_ok=missing_ok)
+        self.meta.unlink(missing_ok=missing_ok)
 
     @property
     def filename(self):
         """Return filename"""
         return self._filename
 
-    def __array__(self):
+    def __array__(self) -> np.ndarray:
         """returns numpy array if np.asarray() or e.g. np.roll() is called on this object"""
-        return self.get()
+        return np.asarray(self.get())
 
     @classmethod
     @abc.abstractmethod
-    def from_array(cls, img: np.ndarray, attrs: Union[Dict, None] = None):
+    def from_array(cls, img: np.ndarray, meta: Union[Dict, Metadata] = None):
         """Initialize from array"""
 
     @property
     def ndim(self):
         """Return ndim of array"""
         return self.get().ndim
+
+    @property
+    def dtype(self):
+        return self.get().dtype
 
     @property
     def shape(self):
@@ -66,12 +120,24 @@ class _PIVImage(abc.ABC):
         return self._img
 
     def max(self):
-        """Return maximum value of image"""
+        """Return maximum value of the image"""
         return self.get().max()
 
     def min(self):
-        """Return minimum value of image"""
+        """Return minimum value of the image"""
         return self.get().min()
+
+    def mean(self, *args, **kwargs):
+        """Return the mean value of the image"""
+        return self.get().mean(*args, **kwargs)
+
+    def median(self, *args, **kwargs):
+        """Return the median value of the image"""
+        return np.median(self.get(), *args, **kwargs)
+
+    def std(self, *args, **kwargs):
+        """Return the standard deviation value of the image"""
+        return np.std(self.get(), *args, **kwargs)
 
     def grayscale(self) -> "PIVImage":
         """make image grayscale if ndim==3"""
@@ -85,7 +151,7 @@ class _PIVImage(abc.ABC):
         """smooth the image"""
         kernel = np.ones((kernel_size, kernel_size), np.float32) / kernel_size ** 2
         smoothed_image = cv2.filter2D(self.get(), -1, kernel)
-        return PIVImage.from_array(smoothed_image, attrs=self.attrs.copy() if keep_attrs else {})
+        return PIVImage.from_array(smoothed_image, meta=self.meta.copy() if keep_meta else {})
 
     def normalize(self, inplace: bool = False) -> "PIVImage":
         """normalize the image"""
@@ -96,7 +162,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = norm_img
             return self
-        return self.from_array(norm_img, attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(norm_img, meta=self.meta.copy() if keep_meta else {})
 
     def rot90(self, inplace: bool = False) -> "PIVImage":
         """rotate image by 90 degrees"""
@@ -104,7 +170,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = np.rot90(_img)
             return self
-        return self.from_array(np.rot90(_img), attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(np.rot90(_img), meta=self.meta.copy() if keep_meta else {})
 
     def fliplr(self, inplace: bool = False) -> "PIVImage":
         """flip image left-right"""
@@ -112,7 +178,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = np.fliplr(_img)
             return self
-        return self.from_array(np.fliplr(_img), attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(np.fliplr(_img), meta=self.meta.copy() if keep_meta else {})
 
     def flipud(self, inplace: bool = False) -> "PIVImage":
         """flip image up-down"""
@@ -120,7 +186,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = np.flipud(_img)
             return self
-        return self.from_array(np.flipud(_img), attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(np.flipud(_img), meta=self.meta.copy() if keep_meta else {})
 
     def rot180(self, inplace: bool = False) -> "PIVImage":
         """rotate image by 180 degrees"""
@@ -128,7 +194,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = np.rot90(_img, k=2)
             return self
-        return self.from_array(np.rot90(_img, k=2), attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(np.rot90(_img, k=2), meta=self.meta.copy() if keep_meta else {})
 
     def apply_mask(self, mask_array: np.ndarray, fill_value: int, inplace: bool = False) -> "PIVImage":
         """Apply a mask to the image. Will set the masked values to `fill_value`."""
@@ -137,7 +203,7 @@ class _PIVImage(abc.ABC):
         if inplace:
             self._img = masked_img
             return self
-        return self.from_array(masked_img, attrs=self.attrs.copy() if keep_attrs else {})
+        return self.from_array(masked_img, meta=self.meta.copy() if keep_meta else {})
 
     def plot(self,
              figure_height: float = 3.,
@@ -219,16 +285,16 @@ class _PIVImage(abc.ABC):
         ax.hist(self.get().ravel(), color=color, **kwargs)
         return ax
 
-    def to_tiff(self, filename, write_attrs: bool = False):
+    def to_tiff(self, filename, write_meta: bool = False):
         filename = save_image(filename, self[:])
-        if write_attrs:
-            yam_filename = filename.parent / f'{filename.stem}_attrs.yaml'
+        if write_meta:
+            yam_filename = filename.parent / f'{filename.stem}_meta.yaml'
             try:
                 import yaml
             except ImportError:
-                raise ImportError('Please install pyyaml to write the attrs to a yaml file.')
+                raise ImportError('Please install pyyaml to write the meta to a yaml file.')
             with open(yam_filename, 'w') as f:
-                yaml.safe_dump(self.attrs, f)
+                yaml.safe_dump(self.meta, f)
         return filename
 
 
@@ -236,9 +302,9 @@ class PIVBackgroundImage(_PIVImage):
     """PIV background image helper class"""
 
     @classmethod
-    def from_array(cls, img: np.ndarray, attrs: Union[Dict, None] = None):
+    def from_array(cls, img: np.ndarray, meta: Union[Dict, Metadata] = None):
         """Create a PIVImage object from a numpy array"""
-        obj = cls(filename=None, attrs=attrs)
+        obj = cls(filename=None, meta=meta)
         obj._img = img
         return obj
 
@@ -250,8 +316,9 @@ class PIVImage(_PIVImage):
                  filename: Union[pathlib.Path, None],
                  is_first_image: bool = None,
                  pco: bool = False,
-                 attrs: Dict = None):
-        super().__init__(filename=filename, attrs=attrs)
+                 meta: Union[Dict, Metadata] = None,
+                 **kwargs):
+        super().__init__(filename=filename, meta=meta, **kwargs)
 
         self.pco = pco
         self._is_a = is_first_image
@@ -290,10 +357,14 @@ class PIVImage(_PIVImage):
         return self._img
 
     @classmethod
-    def from_array(cls, arr, is_first_image: bool = None, pco: bool = False,
-                   attrs: Union[Dict, None] = None) -> "PIVImage":
+    def from_array(cls,
+                   arr,
+                   is_first_image: bool = None,
+                   pco: bool = False,
+                   meta: Union[Dict, Metadata] = None,
+                   **kwargs) -> "PIVImage":
         """Init the class from a numpy array."""
-        pivimg = cls(filename=None, is_first_image=is_first_image, pco=pco, attrs=attrs)
+        pivimg = cls(filename=None, is_first_image=is_first_image, pco=pco, meta=meta, **kwargs)
         ny, nx = arr.shape[0], arr.shape[1]
         if pco and is_first_image:
             pivimg._img = arr[:ny // 2, ...]

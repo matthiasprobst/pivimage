@@ -3,6 +3,7 @@ import numpy as np
 import pathlib
 import pivtestdata as ptd
 import unittest
+import xarray as xr
 
 import pivimage
 
@@ -23,6 +24,9 @@ class TestPivImage(unittest.TestCase):
 
         pivimg = pivimage.PIVImage(self.filenames[0])
         self.assertIsInstance(np.asarray(pivimg), np.ndarray)
+
+        xrpivimg = pivimg.asxarray()
+        self.assertIsInstance(xrpivimg[:], xr.DataArray)
 
     def test_PIVImage(self):
         pivimg_none = pivimage.PIVImage(None)
