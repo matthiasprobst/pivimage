@@ -97,6 +97,9 @@ class TestPivImage(unittest.TestCase):
                 np.testing.assert_array_equal(masked_pivimg[:], pivimg[:])
             np.testing.assert_array_equal(masked_pivimg[0:100, 0:40], int(fill_value) * np.ones((100, 40)))
 
+            masked_pivimg2 = pivimg.apply_mask(mask, fill_value, inplace=True)
+            self.assertTrue(masked_pivimg2 is pivimg)
+
     def test_sub(self):
         ref_img = pivimage.loadimg(self.filenames[0])
         pivimg = pivimage.PIVImage.from_array(ref_img)
@@ -156,6 +159,11 @@ class TestPivImage(unittest.TestCase):
         self.assertEqual(pivimg_norm[:].max(), 1.0)
         self.assertEqual(pivimg_norm[:].min(), 0.0)
 
+        max_value = pivimg.max()
+        assert max_value > 1
+        pivimg.normalize(inplace=True)
+        self.assertEqual(pivimg[:].max(), 1.0)
+
     def test_rot90(self):
         ref_img = pivimage.loadimg(self.filenames[0])
         pivimg = pivimage.PIVImage.from_array(ref_img)
@@ -164,6 +172,9 @@ class TestPivImage(unittest.TestCase):
         with self.assertRaises(AssertionError):
             np.testing.assert_array_equal(pivimg_rot[:], pivimg[:])
         np.testing.assert_array_equal(pivimg_rot[:], np.rot90(ref_img, 1))
+
+        pivimg_rot2 = pivimg_rot.rot90(inplace=True)
+        self.assertTrue(pivimg_rot2 is pivimg_rot)
 
     def test_rot180(self):
         ref_img = pivimage.loadimg(self.filenames[0])
@@ -175,6 +186,9 @@ class TestPivImage(unittest.TestCase):
         np.testing.assert_array_equal(pivimg_rot[:], np.rot90(ref_img, 2))
         pivimg_rot2 = pivimg_rot.rot180()
         np.testing.assert_array_equal(pivimg_rot2[:], pivimg[:])
+
+        pivimg_rot2 = pivimg_rot.rot180(inplace=True)
+        self.assertTrue(pivimg_rot2 is pivimg_rot)
 
     def test_flip(self):
         ref_img = pivimage.loadimg(self.filenames[0])
@@ -192,6 +206,9 @@ class TestPivImage(unittest.TestCase):
         with self.assertRaises(AssertionError):
             np.testing.assert_array_equal(pivimg_flipud[:], pivimg[:])
         np.testing.assert_array_equal(pivimg_flipud[:], np.flipud(ref_img))
+
+        pivimg_flip2 = pivimg.fliplr(inplace=True)
+        self.assertTrue(pivimg_flip2 is pivimg)
 
     def test_to_tiff(self):
         ref_img = pivimage.loadimg(self.filenames[0])

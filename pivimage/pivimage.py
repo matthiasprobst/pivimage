@@ -338,6 +338,10 @@ class PIVImage(_PIVImage):
         diffimg[diffimg < 0] = 0
         return self.__class__(filename=None, is_first_image=None).from_array(diffimg)
 
+    def pair_with(self, other: _PIVImage) -> "PIVImagePair":
+        """Pair this image with another and return an image pair"""
+        return PIVImagePair(self, other)
+
     def get(self) -> np.ndarray:
         """Return the image. If not yet loaded (self._img is None), load it."""
         if self._img is None:
@@ -430,32 +434,20 @@ class PIVImagePair:
     """
 
     def __init__(self,
-                 filename_A: Union[str, pathlib.Path, PIVImage,],
-                 filename_B: Union[str, pathlib.Path, PIVImage, None]):
-        if filename_A is None:
-            raise ValueError('filename_A cannot be None!')
+                 A: Union[str, pathlib.Path, PIVImage],
+                 B: Union[str, pathlib.Path, PIVImage]):
+        if A is None:
+            raise ValueError('A cannot be None!')
 
-        if isinstance(filename_A, PIVImage):
-            filename_A = filename_A.filename
+        if isinstance(A, PIVImage):
+            self._A = A
         else:
-            filename_A = Path(filename_A)
+            self._A = PIVImage(A, is_first_image=True)
 
-        if filename_B is None:
-            # both images are assumed to be stored in the first image:
-            self._A = PIVImage(filename_A, is_first_image=True, pco=True)
-            self._B = PIVImage(filename_A, is_first_image=False, pco=True)
+        if isinstance(B, PIVImage):
+            self._B = B
         else:
-            if isinstance(filename_B, PIVImage):
-                filename_B = filename_B.filename
-            else:
-                filename_B = Path(filename_B)
-
-            if not filename_B.exists():
-                raise FileNotFoundError(filename_A)
-            if not filename_B.exists():
-                raise FileNotFoundError(filename_B)
-            self._A = PIVImage(filename_A, is_first_image=True)
-            self._B = PIVImage(filename_B, is_first_image=False)
+            self._B = PIVImage(B, is_first_image=False)
 
     def plot(self,
              figure_height: float = 3.,
@@ -485,8 +477,10 @@ class PIVImagePair:
         ax_imgA.axis('off')
         ax_histA = fig.add_axes(hist_ax_pos_A)
 
-        hist_ax_pos_B = [left + hist_ax_pos_A[2], bottom, width, hist_height]
-        img_ax_pos_B = [left + img_ax_pos_A[2], hist_height + bottom + spacing, width, height]
+        eps = 0.001
+
+        hist_ax_pos_B = [left + hist_ax_pos_A[2]+eps, bottom, width, hist_height]
+        img_ax_pos_B = [left + img_ax_pos_A[2]+eps, hist_height + bottom + spacing, width, height]
         ax_imgB = fig.add_axes(img_ax_pos_B)
         ax_imgB.axis('off')
         ax_histB = fig.add_axes(hist_ax_pos_B)
