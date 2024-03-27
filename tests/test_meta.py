@@ -1,6 +1,7 @@
 import pathlib
-import pivtestdata as ptd
 import unittest
+
+import pivtestdata as ptd
 
 import pivimage
 
@@ -26,3 +27,5 @@ class TestMetadata(unittest.TestCase):
         no_filename_pivimg = pivimage.PIVImage(None)
         with self.assertRaises(ValueError):
             filename = no_filename_pivimg.meta.save()
+
+        pathlib.Path('test.json').unlink(missing_ok=True)
