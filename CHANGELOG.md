@@ -1,5 +1,8 @@
 # Change log
 
+## v0.7.3
+- no upper Python version limit
+
 ## v0.7.1
 
 - Add `flipud`, `fliplr` to `PIVImage`
